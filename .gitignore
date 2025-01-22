@@ -6,5 +6,5 @@
 *checkpoint.ipynb
 /plugins/*
 /resources/
-!/resources/config.exmaple.json
+!/resources/config.example.json
 !/resources/db.example.json
