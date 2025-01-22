@@ -1,7 +1,11 @@
 package de.halcony.plotalyzer.database.entities.trafficcollection
 
 import de.halcony.plotalyzer.database.Database
-import scalikejdbc.{WrappedResultSet, scalikejdbcSQLInterpolationImplicitDef}
+import scalikejdbc.{
+  DBSession,
+  WrappedResultSet,
+  scalikejdbcSQLInterpolationImplicitDef
+}
 
 import java.time.ZonedDateTime
 
@@ -39,7 +43,8 @@ case class Request(id: Int,
                    error: Option[String],
                    cookies: List[Cookie],
                    headers: List[Header],
-                   trailers: List[Trailer]) {
+                   trailers: List[Trailer],
+                   response: List[Response]) {
 
   def getHost: String = Option(host) match {
     case Some(value) => value
@@ -143,7 +148,8 @@ object Request {
   private def apply(fragment: Fragment,
                     cookies: List[Cookie],
                     headers: List[Header],
-                    trailers: List[Trailer]): Request = {
+                    trailers: List[Trailer],
+                    responses: List[Response]): Request = {
     Request(
       fragment.id,
       fragment.run,
@@ -159,13 +165,15 @@ object Request {
       fragment.error,
       cookies,
       headers,
-      trailers
+      trailers,
+      responses
     )
   }
 
   /** get a request table for a set of request collection runs
     *
     * this is basically an in-memory fast accessible copy of the subset of the request table for faster interaction
+    * which highly improves access and processing times
     *
     * @param runs the runs of interest
     * @param database the database connection
@@ -174,7 +182,7 @@ object Request {
   def getRequestTable(runs: List[Int])(
       implicit database: Database): Map[Int, List[Request]] = {
     val fragments: Map[Int, List[Fragment]] = database.withDatabaseSession {
-      implicit session =>
+      implicit session: DBSession =>
         sql"""SELECT id, run, start_time, scheme, method, host, port, path, content, content_raw, authority, error
               FROM request
               WHERE run IN ($runs)
@@ -187,9 +195,14 @@ object Request {
           .groupBy(_.run)
     }
     val requestIds = fragments.flatMap(_._2.map(_.id)).toList
-    val cookies: Map[Int, List[Cookie]] = Cookie.get(requestIds)
-    val headers: Map[Int, List[Header]] = Header.get(requestIds)
-    val trailers: Map[Int, List[Trailer]] = Trailer.get(requestIds)
+    val cookies: Map[Int, List[Cookie]] =
+      Cookie.get(requestIds, TrafficDirection.REQUEST)
+    val headers: Map[Int, List[Header]] =
+      Header.get(requestIds, TrafficDirection.REQUEST)
+    val trailers: Map[Int, List[Trailer]] =
+      Trailer.get(requestIds, TrafficDirection.REQUEST)
+    val responses: Map[Int, List[Response]] =
+      Response.getResponseTable(requestIds)
     fragments.map {
       case (run, fragments) =>
         run -> fragments.map(
@@ -197,7 +210,8 @@ object Request {
             Request(frag,
                     cookies.getOrElse(frag.id, List()),
                     headers.getOrElse(frag.id, List()),
-                    trailers.getOrElse(frag.id, List())))
+                    trailers.getOrElse(frag.id, List()),
+                    responses.getOrElse(frag.id, List())))
     }
   }
 
