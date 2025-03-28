@@ -104,5 +104,8 @@ RUN --mount=type=ssh git clone git@github.com:App-Analysis/scala-plotalyzer.git 
 USER ias
 WORKDIR /home/ias
 
+# Install `trackhar`
+RUN npm install trackhar
+
 # Define the Standard Command for the container
 CMD ["bash"]
